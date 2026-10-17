@@ -13,10 +13,13 @@ PLANS = {
 
 def _headers():
     secret = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
+
     if not secret:
         raise RuntimeError("PAYSTACK_SECRET_KEY is not configured.")
-    if not secret.startswith("sk_test_"):
-        raise RuntimeError("Development checkout requires a Paystack test key.")
+
+    if not (secret.startswith("sk_test_") or secret.startswith("sk_live_")):
+        raise RuntimeError("Configure a valid Paystack test or live secret key.")
+
     return {
         "Authorization": f"Bearer {secret}",
         "Content-Type": "application/json",
@@ -32,9 +35,11 @@ def initialize_checkout(email, plan, reference, callback_url=None):
         "amount": PLANS[plan]["amount"],
         "currency": "NGN",
         "reference": reference,
-        **({"callback_url": callback_url} if callback_url else {}),
         "metadata": {"product": "Aloko AI Teacher", "plan": plan},
     }
+
+    if callback_url:
+        payload["callback_url"] = callback_url
 
     response = requests.post(
         f"{PAYSTACK_BASE_URL}/transaction/initialize",
@@ -65,6 +70,7 @@ def verify_transaction(reference, expected_amount, expected_email=None):
         raise RuntimeError("Paystack transaction verification failed.")
 
     data = result.get("data", {})
+
     if data.get("status") != "success":
         return False
     if data.get("currency") != "NGN":
