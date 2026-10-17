@@ -1,0 +1,31 @@
+level,semester,course_code,course_title,course_units,lecture_hours_per_week,practical_hours_per_week,verification_status,verification_notes
+HND I,Semester 1,GLT 301,Laboratory Management,,,,Needs details,Detailed course specification not yet structured
+HND I,Semester 1,GLT 302,General Instrumentation,,,,Needs details,Detailed course specification not yet structured
+HND I,Semester 1,GLT 303,Biological and Chemical Instrumentation,,,,Needs details,Detailed course specification not yet structured
+HND I,Semester 1,COM 123,Computer Application Package,,,,Needs details,Detailed course specification not yet structured
+HND I,Semester 1,STH 301,Microbial Biochemistry,2,2,0,Needs review,Source contains an unrelated programming statement and historical ATP-yield estimates
+HND I,Semester 1,STM 311,Bacteriology,3,2,3,Partially structured,Detailed topics include bacterial structure taxonomy identification cultivation and control
+HND I,Semester 1,STM 312,Microbiological Techniques I,3,1,3,Needs verification,Course header says 3 units but semester schedule may show a different value
+HND I,Semester 1,BAM 216,Practice of Entrepreneurship,,,,Needs details,Detailed course specification not yet structured
+HND I,Semester 1,GNS 301,Use of English,,,,Needs details,Detailed course specification not yet structured
+HND I,Semester 2,STM 321,Mycology,2,1,3,Partially structured,Fungal morphology reproduction classification economic uses and medically important fungi
+HND I,Semester 2,STM 322,Microbiological Techniques II,2,1,3,Partially structured,Tissue and organ culture experimental animal management stock cultures and preservation
+HND I,Semester 2,STM 323,Environmental Microbiology,3,2,3,Partially structured,Soil water and air microbiology pollution and bioremediation
+HND I,Semester 2,STM 324,Food Microbiology,,,,Needs details,Course material received; full structured objectives and topics to be entered
+HND I,Semester 2,STM 325,Microbial Physiology and Metabolism,,,,Needs verification,Received material also refers to Microbiology Physiology and Metabolism; verify exact title
+HND I,Semester 2,STM 326,Virology,,,,Needs details,Course material received; full structured objectives and topics to be entered
+HND I,Semester 2,STB316,Parasitology,,,,Needs verification,Preserve code exactly as supplied and verify spacing
+HND I,Semester 2,GNS 302,Appreciation and Oral Composition Literary,,,,Needs verification,Preserve source wording; possible transcription issue
+HND II,Semester 1,STM 411,Microbial Genetics,,,,Needs details,Course material received; full structured objectives and topics to be entered
+HND II,Semester 1,STM 412,Microbiological Techniques III,,,,Needs details,Course material received; full structured objectives and topics to be entered
+HND II,Semester 1,STM 413,Pharmaceutical Microbiology,,,,Needs details,Course material received; full structured objectives and topics to be entered
+HND II,Semester 1,STM 414,Pathogenic Microbiology,,,,Partially structured,Host parasite relationships infections prevention control antimicrobial resistance and nosocomial infections
+HND II,Semester 1,STM 415,Immunology and Public Health,,,,Partially structured,Immune responses antigen antibody reactions immunity blood groups vaccines and communicable diseases
+HND II,Semester 1,STB 421,Applied Genetics (Plant Breeding),,,,Needs details,Detailed course specification not yet structured
+HND II,Semester 1,GNS 413,Industrial Management,,,,Needs details,Detailed course specification not yet structured
+HND II,Semester 2,STM 421,Microbiological Quality Control,,,,Partially structured,Water food beverage pharmaceutical and biological product quality control
+HND II,Semester 2,STM 422,Industrial Microbiology,3,2,4,Needs verification,Source heading says Immunology and Public Health but detailed course goal and outline identify Industrial Microbiology
+HND II,Semester 2,STM 423,Waste Treatment and Utilization,3,2,2,Needs verification,Source heading says Waste Treatment of Utilization but detailed title says Waste Treatment and Utilization
+HND II,Semester 2,STM 424,Seminar,,,,Needs details,Detailed course specification not yet structured
+HND II,Semester 2,STB 422,Applied Genetics (Animal Breeding),,,,Needs details,Detailed course specification not yet structured
+HND II,Semester 2,STM 425,Project,,,,Needs details,Detailed course specification not yet structured
