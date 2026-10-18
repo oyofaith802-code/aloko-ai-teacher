@@ -285,6 +285,19 @@ def available_courses():
 
 courses = available_courses()
 
+# Ensure Advanced Psychometry remains available even if the CSV is stale.
+if not any(
+    str(c.get("course_code", "")).strip().upper() == "GNS 306"
+    for c in courses
+):
+    courses.append({
+        "course_code": "GNS 306",
+        "course_title": "Advanced Psychometry",
+        "level": "HND I",
+        "semester": "Semester 1",
+    })
+
+
 # --------------------------------------------------
 # SESSION STATE
 # --------------------------------------------------
