@@ -156,6 +156,47 @@ def _remaining_feature(email, feature, exempt):
         FREE_FEATURE_LIMITS[feature] - _feature_usage(email, feature),
     )
 
+
+def _microscope_diagram_dot():
+    """Return a built-in labelled educational microscope schematic."""
+    return r"""
+digraph Microscope {
+    graph [label="COMPOUND LIGHT MICROSCOPE",
+           labelloc="t", fontsize=20, rankdir=TB,
+           splines=ortho, nodesep=0.45, ranksep=0.55,
+           bgcolor="white", pad=0.25];
+    node [fontname="Arial", fontsize=10, style="rounded,filled",
+          fillcolor="#EAF3FF", color="#35618D", margin="0.12,0.08"];
+    edge [color="#596579", arrowsize=0.7];
+
+    eyepiece [label="Eyepiece"];
+    tube [label="Body tube / head"];
+    nose [label="Revolving nosepiece"];
+    objective [label="Objective lenses"];
+    stage [label="Stage and stage clips"];
+    condenser [label="Condenser / diaphragm"];
+    light [label="Light source"];
+    arm [label="Arm"];
+    coarse [label="Coarse focus knob"];
+    fine [label="Fine focus knob"];
+    base [label="Base"];
+
+    eyepiece -> tube -> nose -> objective -> stage;
+    stage -> condenser -> light -> base;
+    tube -> arm;
+    arm -> coarse;
+    coarse -> fine;
+    fine -> base;
+
+    {rank=same; arm; coarse; fine;}
+}
+"""
+
+
+def _render_microscope_diagram():
+    dot = _microscope_diagram_dot()
+    st.graphviz_chart(dot, use_container_width=True)
+
 def render_learning_tools(course_code, course_title, level, semester, email, exempt):
     st.subheader("Learning tools")
     st.caption(
@@ -504,13 +545,21 @@ institutional SOP and supervisor.
                         ).strip()
                         if dot.startswith("digraph") or dot.startswith("graph"):
                             try:
-                                st.graphviz_chart(dot)
+                                st.graphviz_chart(dot, use_container_width=True)
                             except Exception:
-                                st.warning("The diagram could not be rendered. Showing its source instead.")
-                                st.code(dot, language="dot")
+                                st.warning("The AI diagram could not be rendered.")
+                                if "microscope" in subject.lower():
+                                    _render_microscope_diagram()
+                                else:
+                                    st.code(dot, language="dot")
+                        elif "microscope" in subject.lower():
+                            st.info("Showing Aloko's built-in labelled microscope schematic.")
+                            _render_microscope_diagram()
                         else:
-                            st.markdown(result)
-                            st.caption("The model did not return valid diagram source.")
+                            st.warning(
+                                "The AI did not return a renderable diagram. "
+                                "Try a more specific subject, such as 'bacterial cell structure'."
+                            )
                     else:
                         st.markdown(result)
                     st.session_state[
