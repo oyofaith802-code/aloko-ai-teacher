@@ -1,4 +1,4 @@
-﻿import re
+import re
 
 import os
 from pathlib import Path
@@ -32,6 +32,7 @@ from subscriptions import init_subscription_db, can_ask_question, record_questio
 import secrets
 from paystack_payments import initialize_checkout, verify_transaction, PLANS
 from db import get_connection
+from learning_tools import render_learning_tools
 
 
 init_db()
@@ -720,6 +721,16 @@ st.subheader(
     f'{selected_course["course_code"]} — {selected_course["course_title"]}'
 )
 st.caption(f"{level} \u00b7 {semester} \u00b7 Mode: {mode}")
+
+render_learning_tools(
+    course_code=selected_course["course_code"],
+    course_title=selected_course["course_title"],
+    level=level,
+    semester=semester,
+    email=st.session_state.aloko_user_email,
+    exempt=is_subscription_exempt(st.session_state.aloko_user_email),
+)
+
 
 if catalog.empty:
     st.info(
