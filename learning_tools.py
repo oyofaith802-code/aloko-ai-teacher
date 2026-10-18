@@ -1,18 +1,19 @@
-﻿import json
+import json
 import os
 import re
 
 import requests
 import streamlit as st
 
-from subscriptions import can_ask_question, record_question
+from subscriptions import can_ask_question, record_question, get_subscription
 
 
-def _ask_ai(prompt, email, exempt):
-    allowed, message = can_ask_question(email, exempt=exempt)
-    if not allowed:
-        st.warning(message)
-        return None
+def _ask_ai(prompt, email, exempt, count_as_tutor_question=True):
+    if count_as_tutor_question:
+        allowed, message = can_ask_question(email, exempt=exempt)
+        if not allowed:
+            st.warning(message)
+            return None
 
     key = os.getenv("GROQ_API_KEY", "").strip()
     if not key:
@@ -46,7 +47,8 @@ def _ask_ai(prompt, email, exempt):
         )
         response.raise_for_status()
         answer = response.json()["choices"][0]["message"]["content"]
-        record_question(email, exempt=exempt)
+        if count_as_tutor_question:
+            record_question(email, exempt=exempt)
         return answer
     except requests.RequestException:
         st.error("The AI service could not complete the request. Please try again.")
@@ -89,6 +91,71 @@ def _read_upload(upload):
     raise ValueError("Please upload a PDF, DOCX, or TXT file.")
 
 
+
+FREE_FEATURE_LIMITS = {
+    "practice_questions": 2,
+    "document_uploads": 1,
+    "diagrams": 1,
+}
+
+
+def _premium_or_exempt(email, exempt):
+    if exempt:
+        return True
+    subscription = get_subscription(email)
+    return (
+        subscription.get("plan") == "premium"
+        and subscription.get("status") == "active"
+    )
+
+
+def _feature_usage(email, feature):
+    with __import__("db").get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS learning_feature_usage (
+                user_email TEXT NOT NULL,
+                feature TEXT NOT NULL,
+                usage_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_email, feature)
+            )
+        """)
+        row = conn.execute(
+            "SELECT usage_count FROM learning_feature_usage "
+            "WHERE user_email = %s AND feature = %s",
+            (email.strip().lower(), feature),
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def _consume_feature(email, feature, amount=1):
+    if amount < 1:
+        return
+    with __import__("db").get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS learning_feature_usage (
+                user_email TEXT NOT NULL,
+                feature TEXT NOT NULL,
+                usage_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_email, feature)
+            )
+        """)
+        conn.execute(
+            "INSERT INTO learning_feature_usage "
+            "(user_email, feature, usage_count) VALUES (%s, %s, %s) "
+            "ON CONFLICT (user_email, feature) DO UPDATE SET "
+            "usage_count = learning_feature_usage.usage_count + EXCLUDED.usage_count",
+            (email.strip().lower(), feature, amount),
+        )
+
+
+def _remaining_feature(email, feature, exempt):
+    if _premium_or_exempt(email, exempt):
+        return None
+    return max(
+        0,
+        FREE_FEATURE_LIMITS[feature] - _feature_usage(email, feature),
+    )
+
 def render_learning_tools(course_code, course_title, level, semester, email, exempt):
     st.subheader("Learning tools")
     st.caption(
@@ -112,16 +179,38 @@ def render_learning_tools(course_code, course_title, level, semester, email, exe
             key=f"practice_topic_{course_code}",
             placeholder="e.g. bacterial cell structure",
         )
-        count = st.selectbox(
-            "Questions in this session",
-            [5, 10, 20],
-            index=1,
-            key=f"practice_count_{course_code}",
+        practice_remaining = _remaining_feature(
+            email, "practice_questions", exempt
         )
+        if practice_remaining is None:
+            count_options = [5, 10, 20]
+            count_label = "Questions in this session (Premium / exempt)"
+        elif practice_remaining > 0:
+            count_options = [practice_remaining]
+            count_label = (
+                f"Free practice questions available: {practice_remaining}"
+            )
+        else:
+            count_options = []
+            count_label = "Free practice questions remaining: 0"
+
+        if count_options:
+            count = st.selectbox(
+                count_label,
+                count_options,
+                key=f"practice_count_{course_code}",
+            )
+        else:
+            count = 0
+            st.warning(
+                "You have used your free practice-question allowance. "
+                "Upgrade to Premium for more practice."
+            )
 
         if st.button(
             "Generate practice questions",
             key=f"generate_practice_{course_code}",
+            disabled=(count == 0),
         ):
             prompt = f"""
 Create exactly {count} original HND Microbiology multiple-choice practice
@@ -148,7 +237,7 @@ Use scientifically accurate content. Exactly four options per question.
 The correct_answer must be A, B, C, or D.
 Do not claim these are historical past examination questions.
 """
-            result = _ask_ai(prompt, email, exempt)
+            result = _ask_ai(prompt, email, exempt, count_as_tutor_question=False)
             if result:
                 try:
                     cleaned = re.sub(
@@ -170,6 +259,11 @@ Do not claim these are historical past examination questions.
                     st.session_state[
                         f"practice_submitted_{course_code}"
                     ] = set()
+
+                    if not _premium_or_exempt(email, exempt):
+                        _consume_feature(
+                            email, "practice_questions", len(questions)
+                        )
                 except (ValueError, TypeError, AttributeError):
                     st.error(
                         "The AI did not return a usable question set. "
@@ -282,9 +376,22 @@ Do not claim these are historical past examination questions.
                         placeholder="e.g. Explain question 3 step by step",
                     )
 
+                    document_remaining = _remaining_feature(
+                        email, "document_uploads", exempt
+                    )
+                    if document_remaining == 0 and not _premium_or_exempt(email, exempt):
+                        st.warning(
+                            "Your one free document analysis has been used. "
+                            "Upgrade to Premium for more uploads."
+                        )
+
                     if st.button(
                         "Analyse document",
                         key=f"analyse_upload_{course_code}",
+                        disabled=(
+                            document_remaining == 0
+                            and not _premium_or_exempt(email, exempt)
+                        ),
                     ):
                         prompt = f"""
 Course: {course_code} — {course_title}; level {level}; {semester}.
@@ -298,11 +405,13 @@ document, say so. Do not invent page numbers or citations.
 DOCUMENT TEXT:
 {document_text[:16000]}
 """
-                        result = _ask_ai(prompt, email, exempt)
+                        result = _ask_ai(prompt, email, exempt, count_as_tutor_question=False)
                         if result:
                             st.session_state[
                                 f"document_result_{course_code}"
                             ] = result
+                            if not _premium_or_exempt(email, exempt):
+                                _consume_feature(email, "document_uploads", 1)
 
                     saved_result = st.session_state.get(
                         f"document_result_{course_code}"
@@ -336,9 +445,20 @@ DOCUMENT TEXT:
             key=f"diagram_kind_{course_code}",
         )
 
+        diagram_remaining = _remaining_feature(email, "diagrams", exempt)
+        if diagram_remaining == 0 and not _premium_or_exempt(email, exempt):
+            st.warning(
+                "Your one free diagram/practical generation has been used. "
+                "Upgrade to Premium for more."
+            )
+
         if st.button(
             "Create learning illustration",
             key=f"create_diagram_{course_code}",
+            disabled=(
+                diagram_remaining == 0
+                and not _premium_or_exempt(email, exempt)
+            ),
         ):
             if not subject.strip():
                 st.warning("Enter a topic first.")
@@ -372,7 +492,7 @@ institutional SOP and supervisor.
                             "Markdown or an ASCII schematic where useful."
                         )
 
-                result = _ask_ai(prompt, email, exempt)
+                result = _ask_ai(prompt, email, exempt, count_as_tutor_question=False)
                 if result:
                     if diagram_kind == "Labelled diagram":
                         dot = result.strip()
@@ -396,3 +516,5 @@ institutional SOP and supervisor.
                     st.session_state[
                         f"learning_illustration_{course_code}"
                     ] = result
+                    if not _premium_or_exempt(email, exempt):
+                        _consume_feature(email, "diagrams", 1)
