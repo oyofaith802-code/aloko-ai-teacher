@@ -197,6 +197,33 @@ def _render_microscope_diagram():
     dot = _microscope_diagram_dot()
     st.graphviz_chart(dot, use_container_width=True)
 
+
+def _amoeba_diagram_svg():
+    """Built-in labelled amoeba diagram used when AI SVG output fails."""
+    return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" width="900" height="620">
+    <rect width="900" height="620" fill="white"/>
+    <text x="450" y="38" text-anchor="middle" font-size="26" font-weight="bold" fill="#18324f">LABELLED DIAGRAM OF AN AMOEBA</text>
+    <path d="M250,300 C205,255 245,220 300,230 C315,180 365,190 390,220 C440,185 475,225 470,260 C525,250 550,300 515,335 C550,380 495,415 455,395 C430,445 380,425 360,400 C315,435 270,400 285,365 C240,360 220,330 250,300 Z" fill="#d9f0e4" stroke="#287b66" stroke-width="5"/>
+    <ellipse cx="380" cy="315" rx="44" ry="37" fill="#a8a5e8" stroke="#5551a6" stroke-width="4"/>
+    <circle cx="315" cy="280" r="18" fill="#b9e4f6" stroke="#287ca0" stroke-width="3"/>
+    <circle cx="430" cy="365" r="23" fill="#b9e4f6" stroke="#287ca0" stroke-width="3"/>
+    <circle cx="455" cy="275" r="10" fill="#f6d58c" stroke="#b8892e" stroke-width="3"/>
+    <path d="M275,245 L185,150 L90,150" fill="none" stroke="#334155" stroke-width="2.5"/>
+    <text x="85" y="138" font-size="19" fill="#172033">Pseudopodium</text>
+    <path d="M365,285 L300,190 L210,190" fill="none" stroke="#334155" stroke-width="2.5"/>
+    <text x="205" y="178" font-size="19" fill="#172033">Nucleus</text>
+    <path d="M315,280 L210,330 L85,330" fill="none" stroke="#334155" stroke-width="2.5"/>
+    <text x="80" y="318" font-size="19" fill="#172033">Food vacuole</text>
+    <path d="M430,365 L520,440 L650,440" fill="none" stroke="#334155" stroke-width="2.5"/>
+    <text x="655" y="447" font-size="19" fill="#172033">Contractile vacuole</text>
+    <path d="M470,300 L555,245 L675,245" fill="none" stroke="#334155" stroke-width="2.5"/>
+    <text x="680" y="252" font-size="19" fill="#172033">Cell membrane</text>
+    <path d="M340,385 L300,490 L190,490" fill="none" stroke="#334155" stroke-width="2.5"/>
+    <text x="90" y="516" font-size="19" fill="#172033">Cytoplasm</text>
+    <text x="450" y="575" text-anchor="middle" font-size="16" fill="#475569">Schematic for learning; shape and organelle positions vary.</text>
+    </svg>"""
+
+
 def render_learning_tools(course_code, course_title, level, semester, email, exempt):
     st.subheader("Learning tools")
     st.caption(
@@ -472,98 +499,174 @@ DOCUMENT TEXT:
     with diagram_tab:
         st.markdown("#### Scientific diagrams and practical lessons")
         subject = st.text_input(
-            "What should Aloko illustrate or teach?",
+            "Topic",
             placeholder=(
-                "e.g. labelled bacterial cell, Gram staining, microscope parts, "
-                "fungal structure"
+                "e.g. bacterial cell structure, microscope parts, fungal "
+                "structure, Gram staining"
             ),
             key=f"diagram_subject_{course_code}",
         )
-        diagram_kind = st.radio(
-            "Learning format",
-            ["Labelled diagram", "Practical lesson", "Both"],
-            horizontal=True,
-            key=f"diagram_kind_{course_code}",
-        )
 
         diagram_remaining = _remaining_feature(email, "diagrams", exempt)
-        if diagram_remaining == 0 and not _premium_or_exempt(email, exempt):
+        is_premium = _premium_or_exempt(email, exempt)
+        disabled = diagram_remaining == 0 and not is_premium
+
+        if disabled:
             st.warning(
-                "Your one free diagram/practical generation has been used. "
+                "Your free diagram/practical generation has been used. "
                 "Upgrade to Premium for more."
             )
 
-        if st.button(
-            "Create learning illustration",
-            key=f"create_diagram_{course_code}",
-            disabled=(
-                diagram_remaining == 0
-                and not _premium_or_exempt(email, exempt)
-            ),
-        ):
+        diagram_col, practical_col = st.columns(2)
+
+        with diagram_col:
+            draw_diagram = st.button(
+                "Draw Scientific Diagram",
+                key=f"draw_scientific_diagram_{course_code}",
+                disabled=disabled,
+                use_container_width=True,
+            )
+
+        with practical_col:
+            generate_practical = st.button(
+                "Generate Practical Lesson",
+                key=f"generate_practical_lesson_{course_code}",
+                disabled=disabled,
+                use_container_width=True,
+            )
+
+        if draw_diagram or generate_practical:
             if not subject.strip():
                 st.warning("Enter a topic first.")
             else:
-                if diagram_kind == "Labelled diagram":
+                if draw_diagram:
                     prompt = f"""
-Create a clear labelled educational diagram about: {subject}.
-Return Graphviz DOT source only, beginning with digraph and ending with }}.
-Use simple node labels, arrows, and a top-to-bottom layout.
-Keep labels concise and scientifically accurate. Do not include external
-URLs, images, file paths, or executable commands.
+You are creating a scientifically accurate educational illustration for
+HND Microbiology students.
+
+TOPIC: {subject}
+COURSE: {course_code} ? {course_title}
+LEVEL: {level}; {semester}
+
+Return a self-contained SVG image only. Do not return Markdown fences,
+Graphviz DOT, HTML, JavaScript, or explanatory prose.
+
+SVG requirements:
+- Use an SVG viewBox of "0 0 900 620".
+- Use a white background and clear, high-contrast lines.
+- Draw the actual biological structure or scientific apparatus, not a
+  collection of connected text boxes.
+- Add a clear title and leader lines connecting structures to their labels.
+- Make labels readable and avoid overlapping labels and lines.
+- Include key scientifically relevant parts and preserve their correct
+  relative arrangement as far as a teaching schematic permits.
+- Use only basic SVG elements: svg, title, desc, rect, circle, ellipse,
+  line, path, polygon, polyline, text, and g.
+- Do not use scripts, event handlers, foreignObject, embedded images,
+  external resources, links, or animation.
+- If the topic is a compound light microscope, draw its recognizable
+  side-view silhouette and label eyepiece, body tube/head, revolving
+  nosepiece, objective lenses, stage, stage clips, condenser/diaphragm,
+  light source, arm, coarse-focus knob, fine-focus knob, and base.
+- For a topic that is not a physical structure, do not invent a misleading
+  anatomical drawing. Instead create a clear labelled scientific schematic
+  appropriate to the topic.
 """
                 else:
                     prompt = f"""
-Prepare a practical teaching guide about {subject} for {course_title},
-{level}, HND Microbiology. Include:
+Prepare a clear practical teaching lesson for HND Microbiology students.
+
+Topic: {subject}
+Course: {course_code} ? {course_title}
+Level: {level}; {semester}
+
+Use these headings:
 1. Aim
-2. Relevant principle
-3. Apparatus/materials
-4. Numbered procedure
-5. Expected observations and interpretation
-6. Precautions, biosafety, and waste disposal
-7. Common errors and review questions.
-Do not recommend unsafe handling of pathogens. Where conditions vary by
-organism or laboratory protocol, say so and refer students to their approved
-institutional SOP and supervisor.
+2. Learning objectives
+3. Principle or scientific background
+4. Apparatus and materials
+5. Method or procedure
+6. Expected observations
+7. Interpretation of results
+8. Precautions and common errors
+9. Waste disposal and biosafety
+10. Review questions with answers
+
+Be scientifically accurate. Distinguish expected results from guaranteed
+results. Do not recommend unsafe handling, culturing, or exposure to
+pathogens. For laboratory work, state that students must follow their
+institution's approved SOP, risk assessment, and supervisor's instructions.
+If a protocol depends on the organism or laboratory, explain that it varies.
+Use readable Markdown.
 """
-                    if diagram_kind == "Both":
-                        prompt += (
-                            "\nAlso include a simple labelled text diagram using "
-                            "Markdown or an ASCII schematic where useful."
+
+                # Use the built-in amoeba drawing directly so this topic
+                # works even when the AI returns invalid SVG or no response.
+                if draw_diagram and "amoeba" in subject.lower():
+                    st.components.v1.html(
+                        _amoeba_diagram_svg(),
+                        height=620,
+                        scrolling=True,
+                    )
+                    st.session_state[
+                        f"learning_illustration_{course_code}"
+                    ] = _amoeba_diagram_svg()
+                    if not is_premium:
+                        _consume_feature(email, "diagrams", 1)
+                    st.stop()
+
+                result = _ask_ai(
+                    prompt,
+                    email,
+                    exempt,
+                    count_as_tutor_question=False,
+                )
+
+                if result:
+                    if draw_diagram:
+                        # Extract the SVG even if the model adds Markdown fences
+                        # or introductory text around it.
+                        match = re.search(
+                            r"<svg\b[^>]*>.*?</svg>",
+                            result,
+                            flags=re.IGNORECASE | re.DOTALL,
+                        )
+                        svg = match.group(0).strip() if match else ""
+
+                        forbidden = re.search(
+                            r"<\s*(script|foreignObject|iframe|object|embed)\b"
+                            r"|\bon[\w:-]+\s*="
+                            r"|javascript\s*:"
+                            r"|(?:href|xlink:href)\s*="
+                            r"|url\s*\(",
+                            svg,
+                            flags=re.IGNORECASE,
                         )
 
-                result = _ask_ai(prompt, email, exempt, count_as_tutor_question=False)
-                if result:
-                    if diagram_kind == "Labelled diagram":
-                        dot = result.strip()
-                        dot = re.sub(
-                            r"^\s*```(?:dot|graphviz)?|```\s*$",
-                            "",
-                            dot,
-                            flags=re.IGNORECASE,
-                        ).strip()
-                        if dot.startswith("digraph") or dot.startswith("graph"):
-                            try:
-                                st.graphviz_chart(dot, use_container_width=True)
-                            except Exception:
-                                st.warning("The AI diagram could not be rendered.")
-                                if "microscope" in subject.lower():
-                                    _render_microscope_diagram()
-                                else:
-                                    st.code(dot, language="dot")
-                        elif "microscope" in subject.lower():
-                            st.info("Showing Aloko's built-in labelled microscope schematic.")
-                            _render_microscope_diagram()
+                        if "amoeba" in subject.lower():
+                            st.info("Showing Aloko's built-in labelled amoeba diagram.")
+                            st.components.v1.html(
+                                _amoeba_diagram_svg(),
+                                height=620,
+                                scrolling=True,
+                            )
+                        elif svg and not forbidden and len(svg) <= 100_000:
+                            st.components.v1.html(
+                                svg,
+                                height=650,
+                                scrolling=True,
+                            )
                         else:
-                            st.warning(
-                                "The AI did not return a renderable diagram. "
-                                "Try a more specific subject, such as 'bacterial cell structure'."
+                            st.error(
+                                "The AI diagram could not be displayed. "
+                                "Try 'amoeba' or a more specific scientific structure."
                             )
                     else:
                         st.markdown(result)
+
                     st.session_state[
                         f"learning_illustration_{course_code}"
                     ] = result
-                    if not _premium_or_exempt(email, exempt):
+
+                    if not is_premium:
                         _consume_feature(email, "diagrams", 1)
