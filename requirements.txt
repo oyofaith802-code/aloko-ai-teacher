@@ -5,3 +5,5 @@ psycopg[binary]
 python-dotenv
 pypdf
 python-docx
+
+groq
