@@ -8,7 +8,7 @@ PAYSTACK_BASE_URL = "https://api.paystack.co"
 PLANS = {
     "monthly": {"amount": 150000, "label": "Aloko Premium Monthly"},
     "annual": {"amount": 1500000, "label": "Aloko Premium Annual"},
-    "uniben_quiz": {"amount": 25000, "label": "UNIBEN Quiz Premium - 7 Hours"},
+    "uniben_quiz": {"amount": 25000, "label": "UNIBEN Quiz Premium - 5 Hours"},
 }
 
 

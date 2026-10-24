@@ -34,9 +34,20 @@ from paystack_payments import initialize_checkout, verify_transaction, PLANS
 from db import get_connection
 from learning_tools import render_learning_tools
 
+from uniben_payments import (
+    create_uniben_checkout,
+    init_uniben_payment_tables,
+    verify_uniben_checkout,
+)
+from uniben_quiz_engine import init_quiz_tables, get_verified_questions
+from uniben_ai_question_generator import COURSES, generate_questions
+
+
 
 init_db()
 init_subscription_db()
+init_quiz_tables()
+init_uniben_payment_tables()
 
 if "aloko_user_email" not in st.session_state:
     st.session_state.aloko_user_email = None
@@ -118,6 +129,16 @@ with st.sidebar:
 
     # Verify Paystack's returned reference against the account and pending plan.
     returned_ref = st.query_params.get("reference")
+    if returned_ref and str(returned_ref).startswith("uniben_"):
+        try:
+            if verify_uniben_checkout(returned_ref, current_email):
+                st.success("UNIBEN payment verified. Your five-hour access is active.")
+            else:
+                st.warning("UNIBEN payment is not confirmed for this account yet.")
+        except Exception:
+            st.error("UNIBEN payment verification failed temporarily. Please retry.")
+        st.query_params.clear()
+        st.rerun()
     if returned_ref:
         try:
             with get_connection() as conn:
@@ -229,10 +250,106 @@ st.title("\U0001F9EB Aloko AI Teacher")
 # App download / install entry point
 with st.container():
     st.link_button(
-        "?? Download App",
+        "Download App",
         os.getenv("ALOKO_APP_DOWNLOAD_URL", "https://aloko-1.onrender.com/"),
         help="Open Aloko. A standalone installer will be provided when app packaging is ready.",
     )
+
+
+# UNIBEN_WORKSPACE_V1
+workspace = st.sidebar.radio(
+    "Choose workspace",
+    ["HND Microbiology AI Teacher", "UNIBEN Part 1 Quiz AI"],
+    key="aloko_workspace",
+)
+
+if workspace == "UNIBEN Part 1 Quiz AI":
+    st.title("UNIBEN Part 1 Quiz AI")
+    st.caption("Past-question learning and clearly labelled AI practice.")
+
+    student_email = st.session_state.aloko_user_email.strip().lower()
+    course_code = st.selectbox(
+        "Choose your course",
+        list(COURSES.keys()),
+        format_func=lambda code: f"{code} ? {COURSES[code]}",
+    )
+
+    try:
+        historical = get_verified_questions(course_code, 25)
+        st.write(f"Verified historical questions available: {len(historical)}")
+        if len(historical) < 12:
+            st.info(
+                "There are not yet enough verified past questions for a full quiz. "
+                "OCR candidates must be reviewed before being presented as verified."
+            )
+    except Exception as exc:
+        historical = []
+        st.warning(f"Could not load the verified question bank: {exc}")
+
+    st.subheader("UNIBEN Premium")
+    st.write("?250 for five hours of access after Paystack confirms payment.")
+    if st.button("Buy UNIBEN Premium ? ?250", key="uniben_buy_premium"):
+        try:
+            callback_url = os.getenv("PAYSTACK_CALLBACK_URL", "").strip()
+            if not callback_url:
+                raise RuntimeError("PAYSTACK_CALLBACK_URL is missing.")
+            checkout = create_uniben_checkout(student_email, callback_url)
+            st.link_button(
+                "Open UNIBEN Paystack checkout",
+                checkout["checkout_url"],
+                use_container_width=True,
+            )
+        except Exception as exc:
+            st.error(f"Could not start UNIBEN checkout: {exc}")
+
+    st.divider()
+    st.subheader("Generate AI practice questions")
+    topic = st.text_input("Topic", placeholder="e.g. vectors, cell structure, mechanics")
+    difficulty = st.selectbox(
+        "Difficulty",
+        ["university beginner", "intermediate", "challenging"],
+    )
+    count = st.select_slider("Number of practice questions", options=[3, 5, 10], value=5)
+
+    if st.button("Generate practice questions", key="uniben_generate_practice"):
+        if not topic.strip():
+            st.warning("Enter a topic first.")
+        else:
+            try:
+                with st.spinner("Generating AI practice questions..."):
+                    result = generate_questions(
+                        course_code,
+                        topic.strip(),
+                        count=count,
+                        difficulty=difficulty,
+                    )
+                st.session_state["uniben_practice_result"] = result
+            except Exception as exc:
+                st.error(f"Question generation failed: {exc}")
+
+    result = st.session_state.get("uniben_practice_result")
+    if result and result.get("course") == course_code:
+        st.info("These are AI-generated practice questions, not verified historical past questions.")
+        for index, question in enumerate(result.get("questions", []), start=1):
+            prompt = question.get("question_text") or question.get("question") or "Question text unavailable"
+            st.markdown(f"**{index}. {prompt}**")
+            options = question.get("options", [])
+            if isinstance(options, dict):
+                options = [f"{key}. {value}" for key, value in options.items()]
+            for option in options:
+                st.write(f"- {option}")
+            answer = question.get("correct_option") or question.get("answer")
+            if answer:
+                with st.expander("Show answer and explanation"):
+                    st.write(f"Answer: {answer}")
+                    st.write(question.get("explanation", "No explanation supplied."))
+
+    st.caption(
+        "Timed quizzes, saved attempts, and the one-time free allowance must be "
+        "validated against the quiz engine before students rely on them."
+    )
+    st.stop()
+
 
 st.caption("Your AI learning companion for HND Microbiology")
 

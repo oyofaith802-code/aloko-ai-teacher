@@ -7,7 +7,7 @@ from paystack_payments import initialize_checkout, verify_transaction
 
 UNIBEN_PLAN = {
     "amount": 25000,  # ₦250 in kobo
-    "label": "UNIBEN Quiz Premium - 7 Hours",
+    "label": "UNIBEN Quiz Premium - 5 Hours",
     "access_seconds": 5 * 60 * 60,
 }
 
