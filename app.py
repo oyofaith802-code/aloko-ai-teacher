@@ -32,7 +32,7 @@ from subscriptions import init_subscription_db, can_ask_question, record_questio
 import secrets
 from paystack_payments import initialize_checkout, verify_transaction, PLANS
 from db import get_connection
-from learning_tools import render_learning_tools
+from learning_tools import render_learning_tools, _feature_usage, _consume_feature
 
 from uniben_payments import (
     create_uniben_checkout,
@@ -272,7 +272,7 @@ workspace = st.sidebar.radio(
 
 if workspace == "UNIBEN Part 1 Quiz AI":
     st.title("UNIBEN Part 1 Quiz AI")
-    st.caption("Practise with verified historical questions. Submit whenever you finish.")
+    st.caption("Study with past questions and AI-powered practice.")
 
     student_email = st.session_state.aloko_user_email.strip().lower()
     course_code = st.selectbox(
@@ -284,14 +284,14 @@ if workspace == "UNIBEN Part 1 Quiz AI":
 
     try:
         historical = get_verified_questions(course_code, 25)
-        st.write(f"Verified historical questions available: {len(historical)}")
+        st.caption(f"Verified past questions available for {course_code}: {len(historical)}")
     except Exception as exc:
         historical = []
         st.error(f"Could not load the question bank: {exc}")
 
-    st.subheader("UNIBEN Premium")
-    st.write("â‚¦250 for five hours of access after Paystack confirms payment.")
-    if st.button("Buy UNIBEN Premium â€” â‚¦250", key="uniben_buy_premium"):
+    st.subheader("Premium access")
+    st.write("Get five hours of quiz access for NGN 250.")
+    if st.button("Get 5-hour access - NGN 250", key="uniben_buy_premium"):
         try:
             callback_url = os.getenv("PAYSTACK_CALLBACK_URL", "").strip()
             if not callback_url:
@@ -306,7 +306,7 @@ if workspace == "UNIBEN Part 1 Quiz AI":
         st.link_button("Open UNIBEN Paystack checkout", checkout_url)
 
     st.divider()
-    st.subheader("Verified past-question quiz")
+    st.subheader("Past-question quiz")
 
     active_id = st.session_state.get("uniben_active_attempt")
     if active_id:
@@ -334,9 +334,9 @@ if workspace == "UNIBEN Part 1 Quiz AI":
     if not attempt:
         if len(historical) < needed:
             st.warning(
-                f"This quiz needs {needed} verified questions for {course_code}; "
-                f"only {len(historical)} are currently available. "
-                "AI-generated practice questions are shown separately below."
+                f"{course_code} has {len(historical)} verified questions; "
+                f"{needed} are needed to start this quiz. "
+                "You can practise with AI-generated questions below while the verified question bank is being prepared."
             )
         elif st.button("Start Quiz", key="uniben_start_quiz"):
             try:
@@ -441,47 +441,255 @@ if workspace == "UNIBEN Part 1 Quiz AI":
             st.rerun()
 
     st.divider()
-    st.subheader("Generate AI practice questions")
-    st.caption("These are AI-generated practice questions, not verified historical questions.")
-    topic = st.text_input("Topic", placeholder="e.g. vectors, cell structure, mechanics")
+    st.subheader("AI Practice CBT")
+    st.caption(
+        "Practise like a CBT exam. Questions are AI-generated, "
+        "not verified historical past questions."
+    )
+
+    topic = st.text_input(
+        "Topic",
+        placeholder="e.g. cell structure, vectors, mechanics",
+        key="uniben_cbt_topic",
+    )
     difficulty = st.selectbox(
         "Difficulty",
         ["university beginner", "intermediate", "challenging"],
         key="uniben_practice_difficulty",
     )
     count = st.select_slider(
-        "Number of practice questions", options=[3, 5, 10], value=5
+        "Number of questions",
+        options=[3, 5, 10],
+        value=5,
+        key="uniben_cbt_count",
     )
 
-    if st.button("Generate practice questions", key="uniben_generate_practice"):
+    if st.button("Generate CBT", key="uniben_generate_practice"):
         if not topic.strip():
             st.warning("Enter a topic first.")
         else:
             try:
-                with st.spinner("Generating AI practice questions..."):
-                    result = generate_questions(
-                        course_code, topic.strip(),
-                        count=count, difficulty=difficulty,
+                with st.spinner("Preparing your CBT..."):
+                    generated = generate_questions(
+                        course_code,
+                        topic.strip(),
+                        count=count,
+                        difficulty=difficulty,
                     )
-                st.session_state["uniben_practice_result"] = result
+                questions_generated = generated.get("questions", [])
+                if not questions_generated:
+                    st.error("No questions were generated. Please try again.")
+                else:
+                    st.session_state["uniben_cbt"] = {
+                        "course": course_code,
+                        "topic": topic.strip(),
+                        "questions": questions_generated,
+                        "answers": {},
+                        "index": 0,
+                        "submitted": False,
+                        "started_at": time.time(),
+                        "duration_seconds": len(questions_generated) * 60,
+                        "explained": [],
+                    }
+                    st.rerun()
             except Exception as exc:
                 st.error(f"Question generation failed: {exc}")
 
-    result = st.session_state.get("uniben_practice_result")
-    if result and result.get("course") == course_code:
-        for index, question in enumerate(result.get("questions", []), start=1):
-            prompt = question.get("question_text") or question.get("question") or "Question text unavailable"
-            st.markdown(f"**{index}. {prompt}**")
-            options = question.get("options", [])
-            if isinstance(options, dict):
-                options = [f"{key}. {value}" for key, value in options.items()]
-            for option in options:
-                st.write(f"- {option}")
-            answer = question.get("correct_option") or question.get("answer")
-            if answer:
-                with st.expander("Show answer and explanation"):
-                    st.write(f"Answer: {answer}")
-                    st.write(question.get("explanation", "No explanation supplied."))
+    cbt = st.session_state.get("uniben_cbt")
+
+    if cbt and cbt.get("course") == course_code:
+        qs = cbt.get("questions", [])
+        if not cbt.get("submitted") and qs:
+            total = len(qs)
+            started_at = float(cbt.get("started_at", time.time()))
+            duration = int(cbt.get("duration_seconds", total * 60))
+            remaining = max(0, int(started_at + duration - time.time()))
+
+            if remaining <= 0:
+                cbt["submitted"] = True
+                cbt["timed_out"] = True
+                st.rerun()
+
+            mins, secs = divmod(remaining, 60)
+            st.subheader(f"Time remaining: {mins:02d}:{secs:02d}")
+            st.progress(min(1.0, max(0.0, 1.0 - remaining / max(1, duration))))
+
+            idx = min(max(int(cbt.get("index", 0)), 0), total - 1)
+            cbt["index"] = idx
+
+            st.markdown(f"### {cbt.get('topic', 'Practice')} ? CBT")
+            st.progress((idx + 1) / total)
+            st.caption(f"Question {idx + 1} of {total}")
+
+            q = qs[idx]
+            prompt = q.get("question_text") or q.get("question") or "Question text unavailable"
+            st.markdown(f"**{idx + 1}. {prompt}**")
+
+            raw_options = q.get("options", [])
+            if isinstance(raw_options, str):
+                import json
+                try:
+                    raw_options = json.loads(raw_options)
+                except Exception:
+                    raw_options = [raw_options]
+
+            if isinstance(raw_options, dict):
+                option_map = {
+                    str(k): str(v) for k, v in raw_options.items()
+                }
+            else:
+                option_map = {}
+                for j, opt in enumerate(raw_options):
+                    key = chr(65 + j)
+                    if isinstance(opt, dict):
+                        key = str(opt.get("key", key))
+                        value = str(
+                            opt.get("text", opt.get("label", opt.get("value", "")))
+                        )
+                    else:
+                        value = str(opt)
+                        if len(value) > 2 and value[1] in ".)":
+                            key, value = value[0], value[2:].strip()
+                    option_map[key] = value
+
+            option_keys = list(option_map.keys())
+            answer_key = f"uniben_cbt_answer_{course_code}_{idx}"
+            previous_answer = cbt["answers"].get(str(idx))
+            default_index = (
+                option_keys.index(previous_answer)
+                if previous_answer in option_keys else None
+            )
+
+            selected = st.radio(
+                "Choose one answer",
+                options=option_keys,
+                index=default_index,
+                format_func=lambda k, m=option_map: f"{k}. {m[k]}",
+                key=answer_key,
+            )
+            cbt["answers"][str(idx)] = selected
+
+            nav_cols = st.columns(3)
+            with nav_cols[0]:
+                if st.button(
+                    "? Previous",
+                    disabled=(idx == 0),
+                    key="uniben_cbt_previous",
+                ):
+                    cbt["index"] = idx - 1
+                    st.rerun()
+            with nav_cols[1]:
+                if st.button("Next ?", disabled=(idx >= total - 1),
+                             key="uniben_cbt_next"):
+                    cbt["index"] = idx + 1
+                    st.rerun()
+            with nav_cols[2]:
+                if st.button("Submit CBT", type="primary",
+                             key="uniben_cbt_submit"):
+                    cbt["submitted"] = True
+                    st.rerun()
+
+            st.markdown("**Question navigator**")
+            nav_cols = st.columns(5)
+            for j in range(total):
+                with nav_cols[j % 5]:
+                    label = f"? {j + 1}" if str(j) in cbt["answers"] else str(j + 1)
+                    if st.button(label, key=f"uniben_cbt_goto_{j}"):
+                        cbt["index"] = j
+                        st.rerun()
+
+            time.sleep(1)
+            st.rerun()
+
+        if cbt.get("submitted"):
+            qs = cbt.get("questions", [])
+            answers = cbt.get("answers", {})
+            correct = 0
+            wrong = 0
+            unanswered = 0
+
+            for j, q in enumerate(qs):
+                selected_answer = answers.get(str(j))
+                expected = q.get("correct_option") or q.get("answer")
+                if not selected_answer:
+                    unanswered += 1
+                elif expected is not None and str(selected_answer).strip().upper() == str(expected).strip().upper():
+                    correct += 1
+                elif expected is not None:
+                    wrong += 1
+                else:
+                    unanswered += 1
+
+            st.subheader("CBT Results")
+            st.metric("Score", f"{correct} / {len(qs)}")
+            result_cols = st.columns(3)
+            result_cols[0].metric("Correct", correct)
+            result_cols[1].metric("Wrong", wrong)
+            result_cols[2].metric("Unanswered", unanswered)
+
+            if cbt.get("timed_out"):
+                st.warning("Time expired. Your CBT was submitted automatically.")
+
+            st.caption(
+                "Each student gets five free AI explanations. "
+                "Your practice attempts remain available after that."
+            )
+            premium = premium_is_active(student_email)
+            feature = "uniben_cbt_explanation"
+            used = _feature_usage(student_email, feature)
+            limit = 5
+            remaining_explanations = None if premium else max(0, limit - used)
+
+            if premium:
+                st.success("Premium active: explanations are unlimited.")
+            else:
+                st.caption(
+                    f"Free explanations remaining: "
+                    f"{remaining_explanations} of {limit}"
+                )
+
+            explained = cbt.setdefault("explained", [])
+            for j, q in enumerate(qs):
+                prompt = (
+                    q.get("question_text")
+                    or q.get("question")
+                    or f"Question {j + 1}"
+                )
+                expected = q.get("correct_option") or q.get("answer")
+                with st.expander(f"Review {j + 1}: {prompt}"):
+                    st.write(
+                        f"Your answer: {answers.get(str(j), 'Not answered')}"
+                    )
+                    if j in explained:
+                        st.write(f"Correct answer: {expected or 'Not supplied'}")
+                        st.write(q.get("explanation", "No explanation supplied."))
+                    elif premium or (remaining_explanations or 0) > 0:
+                        if st.button(
+                            "Explain answer",
+                            key=f"uniben_cbt_explain_{j}",
+                        ):
+                            if not premium:
+                                # Recheck the database before consuming a free use.
+                                latest_used = _feature_usage(student_email, feature)
+                                if latest_used >= limit:
+                                    st.warning(
+                                        "Your five free explanations have been used. "
+                                        "Upgrade to Premium for more."
+                                    )
+                                    st.rerun()
+                                _consume_feature(student_email, feature)
+                            explained.append(j)
+                            cbt["explained"] = explained
+                            st.rerun()
+                    else:
+                        st.info(
+                            "Free explanation limit reached. "
+                            "Upgrade to Premium for more explanations."
+                        )
+
+            if st.button("Start another CBT", key="uniben_cbt_restart"):
+                st.session_state.pop("uniben_cbt", None)
+                st.rerun()
 
     st.stop()
 
