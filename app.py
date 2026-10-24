@@ -1,4 +1,4 @@
-﻿import re
+import re
 
 import os
 from pathlib import Path
@@ -517,7 +517,7 @@ if workspace == "UNIBEN Part 1 Quiz AI":
             idx = min(max(int(cbt.get("index", 0)), 0), total - 1)
             cbt["index"] = idx
 
-            st.markdown(f"### {cbt.get('topic', 'Practice')} ? CBT")
+            st.markdown(f"### {cbt.get('topic', 'Practice')} — CBT")
             st.progress((idx + 1) / total)
             st.caption(f"Question {idx + 1} of {total}")
 
@@ -1372,6 +1372,7 @@ with st.expander("About this prototype"):
         "retrieval system and broader verified teaching library will be "
         "added in later phases."
     )
+
 
 
 
