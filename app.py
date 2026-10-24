@@ -225,6 +225,15 @@ with st.sidebar:
 
 
 st.title("\U0001F9EB Aloko AI Teacher")
+
+# App download / install entry point
+with st.container():
+    st.link_button(
+        "?? Download App",
+        os.getenv("ALOKO_APP_DOWNLOAD_URL", "https://aloko-1.onrender.com/"),
+        help="Open Aloko. A standalone installer will be provided when app packaging is ready.",
+    )
+
 st.caption("Your AI learning companion for HND Microbiology")
 
 # --------------------------------------------------

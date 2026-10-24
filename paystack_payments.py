@@ -8,6 +8,7 @@ PAYSTACK_BASE_URL = "https://api.paystack.co"
 PLANS = {
     "monthly": {"amount": 150000, "label": "Aloko Premium Monthly"},
     "annual": {"amount": 1500000, "label": "Aloko Premium Annual"},
+    "uniben_quiz": {"amount": 25000, "label": "UNIBEN Quiz Premium - 7 Hours"},
 }
 
 
@@ -30,12 +31,14 @@ def initialize_checkout(email, plan, reference, callback_url=None):
     if plan not in PLANS:
         raise ValueError("Invalid subscription plan.")
 
+    product = "UNIBEN Quiz" if plan == "uniben_quiz" else "Aloko AI Teacher"
+
     payload = {
         "email": email.strip().lower(),
         "amount": PLANS[plan]["amount"],
         "currency": "NGN",
         "reference": reference,
-        "metadata": {"product": "Aloko AI Teacher", "plan": plan},
+        "metadata": {"product": product, "plan": plan},
     }
 
     if callback_url:
