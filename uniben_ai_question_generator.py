@@ -3,7 +3,7 @@ import os
 import re
 from groq import Groq
 
-MODEL = os.getenv("UNIBEN_AI_MODEL", "llama-3.3-70b-versatile")
+MODEL = os.getenv("UNIBEN_AI_MODEL", "openai/gpt-oss-120b")
 
 COURSES = {
     "PHY101": "General Physics I",
@@ -144,3 +144,4 @@ if __name__ == "__main__":
 
     print(f"Saved draft: {filename}")
     print("Status: AI-generated, not verified, not published to student quizzes.")
+
