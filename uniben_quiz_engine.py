@@ -215,11 +215,8 @@ def get_attempt(attempt_id, student_id):
         return attempt
 
 
-def submit_quiz(attempt_id, student_id, answers):
-    """
-    answers: dictionary mapping question ID strings to selected option keys.
-    The correct answers are scored only on the server.
-    """
+def submit_quiz(attempt_id, student_id, answers=None):
+    """Submit manually or automatically at timeout; score on the server."""
     with get_connection() as conn:
         attempt = conn.execute("""
             SELECT * FROM uniben_quiz_attempts
@@ -229,26 +226,35 @@ def submit_quiz(attempt_id, student_id, answers):
 
         if not attempt:
             raise LookupError("Quiz attempt not found.")
-        if attempt["status"] != "in_progress":
-            raise ValueError("This quiz is no longer active.")
-
-        if conn.execute("""
-            SELECT NOW() >= expires_at AS expired
-            FROM uniben_quiz_attempts WHERE id = %s
-        """, (attempt_id,)).fetchone()["expired"]:
-            conn.execute("""
-                UPDATE uniben_quiz_attempts SET status = 'expired'
-                WHERE id = %s
-            """, (attempt_id,))
-            raise TimeoutError("The quiz time has expired.")
 
         question_ids = [int(qid) for qid in attempt["question_ids"]]
+        total = len(question_ids)
+
+        if attempt["status"] in ("submitted", "expired"):
+            return {
+                "attempt_id": str(attempt["id"]),
+                "score": attempt["score"] or 0,
+                "total_questions": total,
+                "status": attempt["status"],
+            }
+
+        expired = conn.execute(
+            "SELECT NOW() >= %s AS expired", (attempt["expires_at"],)
+        ).fetchone()["expired"]
+
         allowed_ids = {str(qid) for qid in question_ids}
-        safe_answers = {
-            str(qid): str(option)
-            for qid, option in answers.items()
-            if str(qid) in allowed_ids and isinstance(option, str)
-        }
+        safe_answers = dict(attempt["answers"] or {})
+
+        if answers is not None and not expired:
+            if not isinstance(answers, dict):
+                raise ValueError("Answers must be a dictionary.")
+            safe_answers = {
+                str(qid): option
+                for qid, option in answers.items()
+                if str(qid) in allowed_ids
+                and isinstance(option, str)
+                and option in {"A", "B", "C", "D", "E"}
+            }
 
         correct = conn.execute("""
             SELECT id, correct_option
@@ -264,16 +270,74 @@ def submit_quiz(attempt_id, student_id, answers):
             and option == correct_map[qid]
         )
 
+        status = "expired" if expired else "submitted"
         conn.execute("""
             UPDATE uniben_quiz_attempts
-            SET answers = %s, score = %s, status = 'submitted',
+            SET answers = %s, score = %s, status = %s,
                 submitted_at = NOW()
             WHERE id = %s
-        """, (json.dumps(safe_answers), score, attempt_id))
+        """, (json.dumps(safe_answers), score, status, attempt_id))
 
     return {
         "attempt_id": str(attempt_id),
         "score": score,
-        "total_questions": len(question_ids),
-        "status": "submitted",
+        "total_questions": total,
+        "status": status,
     }
+
+
+def get_attempt_questions(attempt_id, student_id):
+    """Return the questions for this student's attempt without answer keys."""
+    with get_connection() as conn:
+        attempt = conn.execute("""
+            SELECT question_ids, status
+            FROM uniben_quiz_attempts
+            WHERE id = %s AND student_id = %s
+        """, (attempt_id, student_id)).fetchone()
+        if not attempt:
+            raise LookupError("Quiz attempt not found.")
+        ids = [int(qid) for qid in attempt["question_ids"]]
+        rows = conn.execute("""
+            SELECT id, question_text, options, source_page, source_session
+            FROM uniben_quiz_questions
+            WHERE id = ANY(%s) AND verified = TRUE AND active = TRUE
+        """, (ids,)).fetchall()
+        by_id = {str(row["id"]): row for row in rows}
+        return [by_id[str(qid)] for qid in ids if str(qid) in by_id]
+
+
+def save_quiz_answers(attempt_id, student_id, answers):
+    """Save answers while the quiz is active."""
+    import json
+    with get_connection() as conn:
+        attempt = conn.execute("""
+            SELECT question_ids, status, expires_at
+            FROM uniben_quiz_attempts
+            WHERE id = %s AND student_id = %s FOR UPDATE
+        """, (attempt_id, student_id)).fetchone()
+        if not attempt:
+            raise LookupError("Quiz attempt not found.")
+        if attempt["status"] != "in_progress":
+            raise ValueError("This quiz is no longer active.")
+        if not isinstance(answers, dict):
+            raise ValueError("Invalid answers.")
+        allowed = {str(qid) for qid in attempt["question_ids"]}
+        safe = {
+            str(qid): option for qid, option in answers.items()
+            if str(qid) in allowed and option in {"A", "B", "C", "D", "E"}
+        }
+        expired = conn.execute(
+            "SELECT NOW() >= %s AS expired", (attempt["expires_at"],)
+        ).fetchone()["expired"]
+        if expired:
+            conn.execute("""
+                UPDATE uniben_quiz_attempts
+                SET status = 'expired', submitted_at = NOW()
+                WHERE id = %s
+            """, (attempt_id,))
+            return {"status": "expired"}
+        conn.execute("""
+            UPDATE uniben_quiz_attempts SET answers = %s
+            WHERE id = %s AND status = 'in_progress'
+        """, (json.dumps(safe), attempt_id))
+    return {"status": "saved"}

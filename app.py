@@ -39,7 +39,11 @@ from uniben_payments import (
     init_uniben_payment_tables,
     verify_uniben_checkout,
 )
-from uniben_quiz_engine import init_quiz_tables, get_verified_questions
+from uniben_quiz_engine import (
+    init_quiz_tables, get_verified_questions, start_quiz,
+    get_attempt, get_attempt_questions, save_quiz_answers, submit_quiz,
+    premium_is_active,
+)
 from uniben_ai_question_generator import COURSES, generate_questions
 
 
@@ -257,6 +261,9 @@ with st.container():
 
 
 # UNIBEN_WORKSPACE_V1
+import uuid
+import time
+
 workspace = st.sidebar.radio(
     "Choose workspace",
     ["HND Microbiology AI Teacher", "UNIBEN Part 1 Quiz AI"],
@@ -265,51 +272,186 @@ workspace = st.sidebar.radio(
 
 if workspace == "UNIBEN Part 1 Quiz AI":
     st.title("UNIBEN Part 1 Quiz AI")
-    st.caption("Past-question learning and clearly labelled AI practice.")
+    st.caption("Practise with verified historical questions. Submit whenever you finish.")
 
     student_email = st.session_state.aloko_user_email.strip().lower()
     course_code = st.selectbox(
         "Choose your course",
         list(COURSES.keys()),
-        format_func=lambda code: f"{code} ? {COURSES[code]}",
+        format_func=lambda code: f"{code} — {COURSES[code]}",
+        key="uniben_course",
     )
 
     try:
         historical = get_verified_questions(course_code, 25)
         st.write(f"Verified historical questions available: {len(historical)}")
-        if len(historical) < 12:
-            st.info(
-                "There are not yet enough verified past questions for a full quiz. "
-                "OCR candidates must be reviewed before being presented as verified."
-            )
     except Exception as exc:
         historical = []
-        st.warning(f"Could not load the verified question bank: {exc}")
+        st.error(f"Could not load the question bank: {exc}")
 
     st.subheader("UNIBEN Premium")
-    st.write("?250 for five hours of access after Paystack confirms payment.")
-    if st.button("Buy UNIBEN Premium ? ?250", key="uniben_buy_premium"):
+    st.write("₦250 for five hours of access after Paystack confirms payment.")
+    if st.button("Buy UNIBEN Premium — ₦250", key="uniben_buy_premium"):
         try:
             callback_url = os.getenv("PAYSTACK_CALLBACK_URL", "").strip()
             if not callback_url:
                 raise RuntimeError("PAYSTACK_CALLBACK_URL is missing.")
             checkout = create_uniben_checkout(student_email, callback_url)
-            st.link_button(
-                "Open UNIBEN Paystack checkout",
-                checkout["checkout_url"],
-                use_container_width=True,
-            )
+            st.session_state["uniben_checkout_url"] = checkout["checkout_url"]
         except Exception as exc:
             st.error(f"Could not start UNIBEN checkout: {exc}")
 
+    checkout_url = st.session_state.get("uniben_checkout_url")
+    if checkout_url:
+        st.link_button("Open UNIBEN Paystack checkout", checkout_url)
+
+    st.divider()
+    st.subheader("Verified past-question quiz")
+
+    active_id = st.session_state.get("uniben_active_attempt")
+    if active_id:
+        try:
+            attempt = get_attempt(active_id, student_email)
+            if attempt["status"] != "in_progress":
+                st.session_state.pop("uniben_active_attempt", None)
+                st.session_state.pop("uniben_quiz_answers", None)
+                st.info("That quiz is no longer active. Start a new quiz if eligible.")
+                attempt = None
+        except Exception:
+            st.session_state.pop("uniben_active_attempt", None)
+            st.session_state.pop("uniben_quiz_answers", None)
+            attempt = None
+    else:
+        attempt = None
+
+    premium = premium_is_active(student_email)
+    needed = 25 if premium else 12
+    st.caption(
+        f"{'Premium' if premium else 'Free'} quiz: {needed} questions, "
+        f"{10 if premium else 5} minutes."
+    )
+
+    if not attempt:
+        if len(historical) < needed:
+            st.warning(
+                f"This quiz needs {needed} verified questions for {course_code}; "
+                f"only {len(historical)} are currently available. "
+                "AI-generated practice questions are shown separately below."
+            )
+        elif st.button("Start Quiz", key="uniben_start_quiz"):
+            try:
+                new_id = str(uuid.uuid4())
+                started = start_quiz(
+                    student_email, course_code, new_id, premium=premium
+                )
+                st.session_state["uniben_active_attempt"] = started["attempt_id"]
+                st.session_state["uniben_quiz_answers"] = {}
+                st.session_state["uniben_quiz_started_at"] = time.time()
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Could not start quiz: {exc}")
+
+    if attempt:
+        attempt_id = str(attempt["id"])
+        try:
+            questions = get_attempt_questions(attempt_id, student_email)
+            expires_at = attempt["expires_at"]
+            remaining = max(
+                0, int((expires_at.timestamp() - time.time()))
+            ) if hasattr(expires_at, "timestamp") else 0
+
+            if remaining <= 0:
+                result = submit_quiz(attempt_id, student_email)
+                st.session_state["uniben_last_result"] = result
+                st.session_state.pop("uniben_active_attempt", None)
+                st.rerun()
+
+            mins, secs = divmod(remaining, 60)
+            st.subheader(f"Time remaining: {mins:02d}:{secs:02d}")
+            st.progress(min(1.0, remaining / (600 if attempt["tier"] == "premium" else 300)))
+
+            answers = st.session_state.setdefault("uniben_quiz_answers", {})
+            with st.form("uniben_active_quiz"):
+                for i, q in enumerate(questions, start=1):
+                    qid = str(q["id"])
+                    st.markdown(f"**{i}. {q['question_text']}**")
+                    opts = q["options"]
+                    if isinstance(opts, str):
+                        import json
+                        opts = json.loads(opts)
+                    if isinstance(opts, dict):
+                        labels = [f"{k}. {v}" for k, v in opts.items()]
+                        values = list(opts.keys())
+                    else:
+                        labels = []
+                        values = []
+                        for j, opt in enumerate(opts):
+                            if isinstance(opt, dict):
+                                val = str(opt.get("key", chr(65+j)))
+                                label = str(opt.get("text", opt.get("label", opt.get("value", ""))))
+                            else:
+                                val = chr(65+j)
+                                label = str(opt)
+                                if len(label) > 2 and label[1:2] in {".", ")"}:
+                                    val, label = label[0], label[2:].strip()
+                            values.append(val)
+                            labels.append(f"{val}. {label}")
+                    current = answers.get(qid)
+                    index = values.index(current) if current in values else None
+                    selected = st.radio(
+                        "Choose one answer",
+                        options=values,
+                        index=index,
+                        format_func=lambda value, vals=values, labs=labels: labs[vals.index(value)],
+                        key=f"uniben_answer_{attempt_id}_{qid}",
+                    )
+                    answers[qid] = selected
+
+                submitted = st.form_submit_button("Submit Quiz", type="primary")
+
+            if submitted:
+                result = submit_quiz(attempt_id, student_email, answers)
+                st.session_state["uniben_last_result"] = result
+                st.session_state.pop("uniben_active_attempt", None)
+                st.session_state.pop("uniben_quiz_answers", None)
+                st.rerun()
+            else:
+                try:
+                    save_quiz_answers(attempt_id, student_email, answers)
+                except Exception:
+                    pass
+                time.sleep(1)
+                st.rerun()
+        except Exception as exc:
+            st.error(f"Quiz error: {exc}")
+            if st.button("Close quiz", key="uniben_close_quiz"):
+                st.session_state.pop("uniben_active_attempt", None)
+                st.rerun()
+
+    last_result = st.session_state.get("uniben_last_result")
+    if last_result:
+        st.subheader("Quiz result")
+        st.metric(
+            "Score",
+            f"{last_result.get('score', 0)} / {last_result.get('total_questions', 0)}",
+        )
+        st.write(f"Status: {last_result.get('status', 'completed')}")
+        if st.button("Dismiss result", key="uniben_dismiss_result"):
+            st.session_state.pop("uniben_last_result", None)
+            st.rerun()
+
     st.divider()
     st.subheader("Generate AI practice questions")
+    st.caption("These are AI-generated practice questions, not verified historical questions.")
     topic = st.text_input("Topic", placeholder="e.g. vectors, cell structure, mechanics")
     difficulty = st.selectbox(
         "Difficulty",
         ["university beginner", "intermediate", "challenging"],
+        key="uniben_practice_difficulty",
     )
-    count = st.select_slider("Number of practice questions", options=[3, 5, 10], value=5)
+    count = st.select_slider(
+        "Number of practice questions", options=[3, 5, 10], value=5
+    )
 
     if st.button("Generate practice questions", key="uniben_generate_practice"):
         if not topic.strip():
@@ -318,10 +460,8 @@ if workspace == "UNIBEN Part 1 Quiz AI":
             try:
                 with st.spinner("Generating AI practice questions..."):
                     result = generate_questions(
-                        course_code,
-                        topic.strip(),
-                        count=count,
-                        difficulty=difficulty,
+                        course_code, topic.strip(),
+                        count=count, difficulty=difficulty,
                     )
                 st.session_state["uniben_practice_result"] = result
             except Exception as exc:
@@ -329,7 +469,6 @@ if workspace == "UNIBEN Part 1 Quiz AI":
 
     result = st.session_state.get("uniben_practice_result")
     if result and result.get("course") == course_code:
-        st.info("These are AI-generated practice questions, not verified historical past questions.")
         for index, question in enumerate(result.get("questions", []), start=1):
             prompt = question.get("question_text") or question.get("question") or "Question text unavailable"
             st.markdown(f"**{index}. {prompt}**")
@@ -344,10 +483,6 @@ if workspace == "UNIBEN Part 1 Quiz AI":
                     st.write(f"Answer: {answer}")
                     st.write(question.get("explanation", "No explanation supplied."))
 
-    st.caption(
-        "Timed quizzes, saved attempts, and the one-time free allowance must be "
-        "validated against the quiz engine before students rely on them."
-    )
     st.stop()
 
 
