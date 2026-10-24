@@ -1,4 +1,4 @@
-import re
+﻿import re
 
 import os
 from pathlib import Path
@@ -125,11 +125,11 @@ with st.sidebar:
     # ALOKO_PAYSTACK_CHECKOUT_V2 - Neon PostgreSQL
     st.divider()
     st.subheader("Aloko Premium")
-    st.write("Monthly — ₦1,500")
-    st.write("Annual — ₦15,000")
+    st.write("Monthly â€” â‚¦1,500")
+    st.write("Annual â€” â‚¦15,000")
     st.caption("Free plan: 2 questions per day.")
 
-    current_email = st.session_state.aloko_user_email.strip().lower()
+    current_email = (st.session_state.get("aloko_user_email") or "").strip().lower()
 
     # Verify Paystack's returned reference against the account and pending plan.
     returned_ref = st.query_params.get("reference")
@@ -198,12 +198,12 @@ with st.sidebar:
             st.write(f"Plan: {plan_label}")
             st.caption(f"Expires: {str(details[1])[:10]}")
     elif is_subscription_exempt(current_email):
-        st.success("Friend access enabled — subscription exempt")
+        st.success("Friend access enabled â€” subscription exempt")
     else:
         st.write("Choose a plan to continue to secure Paystack test checkout.")
         for plan_key, label in [
-            ("monthly", "Pay monthly — ₦1,500"),
-            ("annual", "Pay annually — ₦15,000"),
+            ("monthly", "Pay monthly â€” â‚¦1,500"),
+            ("annual", "Pay annually â€” â‚¦15,000"),
         ]:
             if st.button(
                 label, use_container_width=True, key=f"aloko_checkout_{plan_key}"
@@ -278,7 +278,7 @@ if workspace == "UNIBEN Part 1 Quiz AI":
     course_code = st.selectbox(
         "Choose your course",
         list(COURSES.keys()),
-        format_func=lambda code: f"{code} — {COURSES[code]}",
+        format_func=lambda code: f"{code} â€” {COURSES[code]}",
         key="uniben_course",
     )
 
@@ -290,8 +290,8 @@ if workspace == "UNIBEN Part 1 Quiz AI":
         st.error(f"Could not load the question bank: {exc}")
 
     st.subheader("UNIBEN Premium")
-    st.write("₦250 for five hours of access after Paystack confirms payment.")
-    if st.button("Buy UNIBEN Premium — ₦250", key="uniben_buy_premium"):
+    st.write("â‚¦250 for five hours of access after Paystack confirms payment.")
+    if st.button("Buy UNIBEN Premium â€” â‚¦250", key="uniben_buy_premium"):
         try:
             callback_url = os.getenv("PAYSTACK_CALLBACK_URL", "").strip()
             if not callback_url:
@@ -597,7 +597,7 @@ with st.sidebar:
         filtered_courses = courses
 
     course_labels = [
-        f'{c["course_code"]} — {c["course_title"]}'
+        f'{c["course_code"]} â€” {c["course_title"]}'
         for c in filtered_courses
     ]
 
@@ -887,7 +887,7 @@ def verified_microbiology_answer(question):
             "| Terminal electron acceptor | Oxygen (O2) | A non-oxygen acceptor, such as nitrate or sulfate, depending on the organism | An organic molecule or derivative accepts electrons; there is no respiratory terminal acceptor |\n"
             "| Respiratory electron transport chain | Yes | Yes | No |\n"
             "| ATP production | Mainly oxidative phosphorylation, plus substrate-level phosphorylation | Oxidative phosphorylation, plus substrate-level phosphorylation where applicable | Mainly substrate-level phosphorylation |\n\n"
-            "ATP yield varies with organism and pathway. The traditional 36–38 ATP per glucose figure is an older textbook estimate, not a universal value. Common lactic acid and alcoholic fermentation pathways yield a net 2 ATP per glucose. Do not assume every anaerobic respiratory pathway yields the same amount."
+            "ATP yield varies with organism and pathway. The traditional 36â€“38 ATP per glucose figure is an older textbook estimate, not a universal value. Common lactic acid and alcoholic fermentation pathways yield a net 2 ATP per glucose. Do not assume every anaerobic respiratory pathway yields the same amount."
         )
 
     oxygen_terms = (
@@ -961,7 +961,7 @@ def verified_microbiology_answer(question):
 
 def verified_dna_transcription_answer(question):
     """Calculate a coding DNA strand's template and RNA transcript."""
-    q = question.lower().replace("′", "'").replace("’", "'")
+    q = question.lower().replace("â€²", "'").replace("â€™", "'")
 
     if not all(term in q for term in ("coding dna", "template", "rna")):
         return None
@@ -977,11 +977,11 @@ def verified_dna_transcription_answer(question):
 
     return (
         "**Verified DNA transcription answer**\n\n"
-        f"- Coding DNA strand: 5′-{coding}-3′\n"
-        f"- Template DNA strand: 3′-{template}-5′\n"
-        f"- RNA transcript: 5′-{rna}-3′\n\n"
+        f"- Coding DNA strand: 5â€²-{coding}-3â€²\n"
+        f"- Template DNA strand: 3â€²-{template}-5â€²\n"
+        f"- RNA transcript: 5â€²-{rna}-3â€²\n\n"
         "The strands are antiparallel. RNA polymerase reads the DNA "
-        "template 3′→5′ and synthesizes RNA 5′→3′. The RNA transcript "
+        "template 3â€²â†’5â€² and synthesizes RNA 5â€²â†’3â€². The RNA transcript "
         "matches the coding strand in sequence, except RNA uses U "
         "instead of T."
     )
@@ -992,7 +992,7 @@ def verified_dna_transcription_answer(question):
 # --------------------------------------------------
 
 st.subheader(
-    f'{selected_course["course_code"]} — {selected_course["course_title"]}'
+    f'{selected_course["course_code"]} â€” {selected_course["course_title"]}'
 )
 st.caption(f"{level} \u00b7 {semester} \u00b7 Mode: {mode}")
 
@@ -1065,7 +1065,7 @@ if question:
 {SYSTEM_PROMPT}
 
 SELECTED COURSE:
-{selected_course["course_code"]} — {selected_course["course_title"]}
+{selected_course["course_code"]} â€” {selected_course["course_title"]}
 
 LEVEL: {level}
 SEMESTER: {semester}
@@ -1164,5 +1164,6 @@ with st.expander("About this prototype"):
         "retrieval system and broader verified teaching library will be "
         "added in later phases."
     )
+
 
 
