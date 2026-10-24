@@ -1,0 +1,82 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123b64">
+  <meta name="description" content="Aloko AI Teacher for HND Microbiology and UNIBEN students.">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icons/aloko.svg" type="image/svg+xml">
+  <title>Aloko AI Teacher</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      padding: 24px; font-family: system-ui, sans-serif;
+      background: linear-gradient(145deg, #eaf4ff, #f8fbff); color: #16324f;
+    }
+    main {
+      width: min(100%, 440px); padding: 32px; text-align: center;
+      background: white; border-radius: 24px;
+      box-shadow: 0 12px 40px #123b6418;
+    }
+    .logo { width: 100px; height: 100px; margin-bottom: 12px; }
+    h1 { margin: 8px 0; font-size: 28px; }
+    p { line-height: 1.6; color: #526579; }
+    a, button {
+      display: block; width: 100%; padding: 14px; margin-top: 14px;
+      border: 0; border-radius: 12px; font-size: 16px;
+      font-weight: 700; text-decoration: none; cursor: pointer;
+    }
+    .primary { background: #123b64; color: white; }
+    .secondary { background: #eaf1f8; color: #123b64; }
+    #install { display: none; }
+    footer { margin-top: 22px; font-size: 12px; color: #718096; }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="logo" src="./icons/aloko.svg" alt="Aloko AI Teacher logo">
+    <h1>Aloko AI Teacher</h1>
+    <p>Your learning companion for HND Microbiology and UNIBEN past-question practice.</p>
+    <button id="install" class="primary">Install Aloko AI Teacher</button>
+    <a class="primary" href="https://aloko-ai-teacher-mqdlth7qlgffyfxexyznoq.streamlit.app/">
+      Open Aloko AI Teacher
+    </a>
+    <button id="instructions" class="secondary">How to install</button>
+    <p id="message" role="status" aria-live="polite"></p>
+    <footer>Requires an internet connection to use learning features and payments.</footer>
+  </main>
+  <script>
+    let installPrompt;
+    const installButton = document.getElementById("install");
+    const message = document.getElementById("message");
+
+    window.addEventListener("beforeinstallprompt", event => {
+      event.preventDefault();
+      installPrompt = event;
+      installButton.style.display = "block";
+    });
+
+    installButton.addEventListener("click", async () => {
+      if (!installPrompt) return;
+      await installPrompt.prompt();
+      installPrompt = null;
+      installButton.style.display = "none";
+    });
+
+    document.getElementById("instructions").addEventListener("click", () => {
+      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      message.textContent = isIOS
+        ? "In Safari, tap Share, then Add to Home Screen."
+        : "If Install is not shown, open your browser menu and choose Install app or Add to Home screen.";
+    });
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
