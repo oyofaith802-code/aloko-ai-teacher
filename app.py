@@ -135,6 +135,64 @@ if not st.session_state.aloko_user_email:
 
     st.stop()
 
+def render_aloko_upgrade_buttons(email, key_prefix):
+    """Start the existing verified Aloko Premium checkout for either plan."""
+    email = (email or "").strip().lower()
+    st.write("Upgrade to Aloko Premium:")
+
+    monthly_col, annual_col = st.columns(2)
+
+    plans_to_show = [
+        (monthly_col, "monthly", "Monthly ? ?1,500"),
+        (annual_col, "annual", "Annual ? ?15,000"),
+    ]
+
+    for column, plan_key, label in plans_to_show:
+        with column:
+            if st.button(
+                label,
+                key=f"{key_prefix}_{plan_key}",
+                use_container_width=True,
+            ):
+                reference = "aloko_" + secrets.token_hex(16)
+
+                try:
+                    with get_connection() as conn:
+                        conn.execute(
+                            "INSERT INTO pending_payments "
+                            "(reference, user_email, plan) VALUES (%s, %s, %s)",
+                            (reference, email, plan_key),
+                        )
+
+                    callback_url = os.getenv("PAYSTACK_CALLBACK_URL", "").strip()
+                    if not callback_url:
+                        raise RuntimeError(
+                            "PAYSTACK_CALLBACK_URL is missing from environment settings."
+                        )
+
+                    checkout_url = initialize_checkout(
+                        email, plan_key, reference, callback_url
+                    )
+
+                    st.link_button(
+                        "Continue to secure Paystack checkout",
+                        checkout_url,
+                        use_container_width=True,
+                    )
+                    st.info(
+                        "Complete payment through Paystack. Your subscription "
+                        "will activate only after the payment is verified."
+                    )
+
+                except Exception as exc:
+                    with get_connection() as conn:
+                        conn.execute(
+                            "DELETE FROM pending_payments WHERE reference = %s",
+                            (reference,),
+                        )
+                    st.error(f"Could not start checkout: {exc}")
+
+
 with st.sidebar:
     st.caption(f"Signed in as {st.session_state.aloko_user_email}")
     if is_subscription_exempt(st.session_state.aloko_user_email):
@@ -661,7 +719,12 @@ if workspace == "UNIBEN Part 1 Quiz AI":
             if premium:
                 st.success("Premium active: explanations are unlimited.")
             else:
-                st.info("Subscribe to Aloko Premium to view answer explanations. Use the subscription buttons in the sidebar.")
+                st.info(
+                    "Upgrade to Aloko Premium to unlock AI answer explanations."
+                )
+                render_aloko_upgrade_buttons(
+                    student_email, "uniben_explanation_upgrade"
+                )
 
             explained = cbt.setdefault("explained", [])
             for j, q in enumerate(qs):
@@ -704,7 +767,13 @@ if workspace == "UNIBEN Part 1 Quiz AI":
                     st.session_state.pop("uniben_cbt", None)
                     st.rerun()
                 else:
-                    st.warning("Subscribe to Aloko Premium to generate another CBT. Use the subscription buttons in the sidebar.")
+                    st.warning(
+                        "Your free practice CBT has been used. "
+                        "Upgrade to Aloko Premium to start another CBT."
+                    )
+                    render_aloko_upgrade_buttons(
+                        student_email, "uniben_restart_upgrade"
+                    )
 
     st.stop()
 
