@@ -538,39 +538,54 @@ if workspace == "UNIBEN Part 1 Quiz AI":
 
     if st.button("Generate CBT", key="uniben_generate_practice"):
         premium = has_uniben_premium_access(student_email)
-        if not premium:
-            st.warning("Subscribe to Aloko Premium to generate AI practice CBTs.")
-            st.info("Use the Aloko Premium subscription buttons in the sidebar.")
+        practice_feature = "uniben_ai_practice_cbt"
+        free_attempt_limit = 1
+        attempts_used = _feature_usage(student_email, practice_feature)
+
+        if not premium and attempts_used >= free_attempt_limit:
+            st.warning(
+                "Your one free AI Practice CBT has been used. "
+                "Upgrade to Premium to generate another CBT."
+            )
+            render_aloko_upgrade_buttons(
+                student_email, "uniben_generate_upgrade"
+            )
+        elif not topic.strip():
+            st.warning("Enter a topic first.")
         else:
-            if not topic.strip():
-                st.warning("Enter a topic first.")
-            else:
-                try:
-                    with st.spinner("Preparing your CBT..."):
-                        generated = generate_questions(
-                            course_code,
-                            topic.strip(),
-                            count=count,
-                            difficulty=difficulty,
-                        )
-                    questions_generated = generated.get("questions", [])
-                    if not questions_generated:
-                        st.error("No questions were generated. Please try again.")
-                    else:
-                        st.session_state["uniben_cbt"] = {
-                            "course": course_code,
-                            "topic": topic.strip(),
-                            "questions": questions_generated,
-                            "answers": {},
-                            "index": 0,
-                            "submitted": False,
-                            "started_at": time.time(),
-                            "duration_seconds": len(questions_generated) * 60,
-                            "explained": [],
-                        }
-                        st.rerun()
-                except Exception as exc:
-                    st.error(f"Question generation failed: {exc}")
+            question_count = count if premium else min(count, 5)
+            try:
+                with st.spinner("Preparing your CBT..."):
+                    generated = generate_questions(
+                        course_code,
+                        topic.strip(),
+                        count=question_count,
+                        difficulty=difficulty,
+                    )
+
+                questions_generated = generated.get("questions", [])
+                if not questions_generated:
+                    st.error("No questions were generated. Please try again.")
+                else:
+                    if not premium:
+                        # Count a free attempt only after successful generation.
+                        _consume_feature(student_email, practice_feature)
+
+                    st.session_state["uniben_cbt"] = {
+                        "course": course_code,
+                        "topic": topic.strip(),
+                        "questions": questions_generated,
+                        "answers": {},
+                        "index": 0,
+                        "submitted": False,
+                        "started_at": time.time(),
+                        "duration_seconds": len(questions_generated) * 60,
+                        "explained": [],
+                    }
+                    st.rerun()
+            except Exception as exc:
+                st.error(f"Question generation failed: {exc}")
+
     cbt = st.session_state.get("uniben_cbt")
 
     if cbt and cbt.get("course") == course_code:
