@@ -6,8 +6,8 @@ from db import get_connection
 from paystack_payments import initialize_checkout, verify_transaction
 
 UNIBEN_PLAN = {
-    "amount": 25000,  # ₦250 in kobo
-    "label": "UNIBEN Quiz Premium - 5 Hours",
+    "amount": 50000,  # ₦250 in kobo
+    "label": "UNIBEN Verified Past Questions - 5 Hours",
     "access_seconds": 5 * 60 * 60,
 }
 
