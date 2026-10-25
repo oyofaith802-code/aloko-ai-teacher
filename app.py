@@ -760,7 +760,13 @@ if workspace == "UNIBEN Part 1 Quiz AI":
                             cbt["explained"] = explained
                             st.rerun()
                     else:
-                        st.info("Subscribe to Aloko Premium to view this explanation. Use the subscription buttons in the sidebar.")
+                        st.info(
+                            "Upgrade to Aloko Premium to unlock this answer explanation."
+                        )
+                        render_aloko_upgrade_buttons(
+                            student_email,
+                            f"uniben_question_explanation_upgrade_{j}",
+                        )
 
             if st.button("Start another CBT", key="uniben_cbt_restart"):
                 if has_uniben_premium_access(student_email):
