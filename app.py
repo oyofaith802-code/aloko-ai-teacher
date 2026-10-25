@@ -32,17 +32,14 @@ from subscriptions import init_subscription_db, can_ask_question, record_questio
 
 
 def has_uniben_premium_access(email):
-    """Allow active Aloko Premium, active 5-hour UNIBEN access, or exempt accounts."""
-    if is_subscription_exempt(email):
+    """Allow UNIBEN five-hour access or explicitly exempt accounts only."""
+    normalized_email = (email or "").strip().lower()
+
+    if is_subscription_exempt(normalized_email):
         return True
+
     try:
-        sub = get_subscription((email or "").strip().lower())
-        if sub.get("plan") == "premium" and sub.get("status") == "active":
-            return True
-    except Exception:
-        pass
-    try:
-        return premium_is_active((email or "").strip().lower())
+        return premium_is_active(normalized_email)
     except Exception:
         return False
 
